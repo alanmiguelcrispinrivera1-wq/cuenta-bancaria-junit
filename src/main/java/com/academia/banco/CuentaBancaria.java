@@ -2,6 +2,7 @@ package com.academia.banco;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -43,18 +44,25 @@ public class CuentaBancaria {
 
     public void retirar(BigDecimal monto) {
         BigDecimal m = validarMonto(monto);
+        
+        // Corrección Queja 2: debe ser estrictamente mayor al límite para lanzar la excepción (">" en lugar de ">=")
         if (m.compareTo(LIMITE_POR_RETIRO) > 0) {
             throw new LimiteExcedidoException(m, LIMITE_POR_RETIRO);
         }
+        
         BigDecimal comision = comisionDelRetiro(retiros + 1);
         BigDecimal total = m.add(comision);
+        
         if (total.compareTo(saldo) > 0) {
             throw new SaldoInsuficienteException(saldo, total);
         }
+        
         saldo = saldo.subtract(total);
         retiros++;
         movimientos.add(new Movimiento(TipoMovimiento.RETIRO, m));
-        if (comision.signum() > 0) {
+        
+        // Corrección Queja 4: registrar la comisión en el historial si se cobró
+        if (comision.compareTo(BigDecimal.ZERO) > 0) {
             movimientos.add(new Movimiento(TipoMovimiento.COMISION, comision));
         }
     }
@@ -67,9 +75,12 @@ public class CuentaBancaria {
             throw new IllegalArgumentException("No puedes transferirte a la misma cuenta");
         }
         BigDecimal m = validarMonto(monto);
+        
+        // Corrección Queja 3: validar si hay saldo suficiente ANTES de restarlo
         if (m.compareTo(saldo) > 0) {
             throw new SaldoInsuficienteException(saldo, m);
         }
+        
         saldo = saldo.subtract(m);
         destino.saldo = destino.saldo.add(m);
         movimientos.add(new Movimiento(TipoMovimiento.TRANSFERENCIA_ENVIADA, m));
@@ -81,6 +92,7 @@ public class CuentaBancaria {
         if (numeroDeRetiro < 1) {
             throw new IllegalArgumentException("El número de retiro empieza en 1");
         }
+        // Corrección Queja 1: el tercer retiro también es gratis ("<=" en lugar de "<")
         return numeroDeRetiro <= RETIROS_GRATIS ? new BigDecimal("0.00") : COMISION;
     }
 
@@ -97,7 +109,8 @@ public class CuentaBancaria {
     }
 
     public List<Movimiento> getMovimientos() {
-        return List.copyOf(movimientos);
+        // Corrección Queja 5: devolver una lista de solo lectura para evitar modificaciones externas
+        return Collections.unmodifiableList(movimientos);
     }
 
     private static BigDecimal validarMonto(BigDecimal monto) {
