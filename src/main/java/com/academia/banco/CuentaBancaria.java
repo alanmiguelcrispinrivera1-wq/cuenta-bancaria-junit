@@ -28,6 +28,7 @@ public class CuentaBancaria {
     private BigDecimal saldo = new BigDecimal("0.00");
     private int retiros = 0;
     private final List<Movimiento> movimientos = new ArrayList<>();
+    private boolean cerrada = false;
 
     public CuentaBancaria(String titular) {
         if (titular == null || titular.isBlank()) {
@@ -37,15 +38,18 @@ public class CuentaBancaria {
     }
 
     public void depositar(BigDecimal monto) {
+        validarAbierta();
+        
         BigDecimal m = validarMonto(monto);
         saldo = saldo.add(m);
         movimientos.add(new Movimiento(TipoMovimiento.DEPOSITO, m));
     }
 
     public void retirar(BigDecimal monto) {
+        validarAbierta();
+        
         BigDecimal m = validarMonto(monto);
         
-        // Corrección Queja 2: debe ser estrictamente mayor al límite para lanzar la excepción (">" en lugar de ">=")
         if (m.compareTo(LIMITE_POR_RETIRO) > 0) {
             throw new LimiteExcedidoException(m, LIMITE_POR_RETIRO);
         }
@@ -61,7 +65,6 @@ public class CuentaBancaria {
         retiros++;
         movimientos.add(new Movimiento(TipoMovimiento.RETIRO, m));
         
-        // Corrección Queja 4: registrar la comisión en el historial si se cobró
         if (comision.compareTo(BigDecimal.ZERO) > 0) {
             movimientos.add(new Movimiento(TipoMovimiento.COMISION, comision));
         }
@@ -74,9 +77,11 @@ public class CuentaBancaria {
         if (destino == this) {
             throw new IllegalArgumentException("No puedes transferirte a la misma cuenta");
         }
+        
+        destino.validarAbierta();
+        
         BigDecimal m = validarMonto(monto);
         
-        // Corrección Queja 3: validar si hay saldo suficiente ANTES de restarlo
         if (m.compareTo(saldo) > 0) {
             throw new SaldoInsuficienteException(saldo, m);
         }
@@ -87,12 +92,21 @@ public class CuentaBancaria {
         destino.movimientos.add(new Movimiento(TipoMovimiento.TRANSFERENCIA_RECIBIDA, m));
     }
 
+    public void cerrar() {
+        validarAbierta();
+        
+        if (saldo.compareTo(BigDecimal.ZERO) > 0) {
+            throw new IllegalStateException("No puedes cerrar una cuenta con saldo: $" + saldo);
+        }
+        
+        this.cerrada = true;
+    }
+
     /** Comisión del retiro número {@code numeroDeRetiro} (el primero es el 1). */
     public static BigDecimal comisionDelRetiro(int numeroDeRetiro) {
         if (numeroDeRetiro < 1) {
             throw new IllegalArgumentException("El número de retiro empieza en 1");
         }
-        // Corrección Queja 1: el tercer retiro también es gratis ("<=" en lugar de "<")
         return numeroDeRetiro <= RETIROS_GRATIS ? new BigDecimal("0.00") : COMISION;
     }
 
@@ -109,8 +123,17 @@ public class CuentaBancaria {
     }
 
     public List<Movimiento> getMovimientos() {
-        // Corrección Queja 5: devolver una lista de solo lectura para evitar modificaciones externas
         return Collections.unmodifiableList(movimientos);
+    }
+
+    public boolean estaCerrada() {
+        return cerrada;
+    }
+
+    private void validarAbierta() {
+        if (this.cerrada) {
+            throw new CuentaCerradaException(this.titular);
+        }
     }
 
     private static BigDecimal validarMonto(BigDecimal monto) {
